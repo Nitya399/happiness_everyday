@@ -45,10 +45,7 @@ const VendorMessages: React.FC = () => {
     fetchMessages();
   }, []);
 
-  if (loading) {
-    return <p>Loading messages...</p>;
-  }
-
+ 
  //Send Message
 
 
@@ -78,6 +75,10 @@ const VendorMessages: React.FC = () => {
     };
   }, [activeConversationId]);
 
+   if (loading) {
+    return <p>Loading messages...</p>;
+  }
+
 
   if (messages.length === 0) {
     return (
@@ -101,7 +102,7 @@ const VendorMessages: React.FC = () => {
       <ul className="space-y-4">
         {messages.map((msg) => (
           <li key={msg.id} className="border-b border-gray-200 dark:border-gray-700 pb-4">
-            <p className="text-gray-700 dark:text-gray-300">{msg.content}</p>
+            <p className="text-gray-700 dark:text-gray-300">{msg.message}</p>
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {new Date(msg.created_at).toLocaleString()}
             </p>

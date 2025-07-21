@@ -22,6 +22,19 @@ interface UserInfo {
   userImage: string;
 }
 
+type VendorDetails = Partial<{
+  id: string;             // UUID
+  user_id: string;        // UUID
+  business_name: string;
+  city: string;
+  phone: string;
+  email: string;
+  description: string;
+  logo_url: string;
+  website: string;
+  created_at: string; 
+}>;
+
 interface Conversation {
   id: string;
   userImage: string;
@@ -42,6 +55,7 @@ const VendorMessages: React.FC = () => {
   const [users, setUsers] = useState<Record<string, UserInfo>>({});
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [showMobileList, setShowMobileList] = useState(true);
+  const [currentVendor,setCurrentVendor] = useState<VendorDetails|null>(null);
 
   // Fetch messages where vendor is involved
   useEffect(() => {
@@ -134,7 +148,7 @@ const VendorMessages: React.FC = () => {
         data.forEach(u => {
           map[u.id] = {
             userName: u.name,
-            userImage: u.image_url || '/default-user.png',
+            userImage:   '/default-user.png',
           };
         });
         setUsers(map);
@@ -144,31 +158,75 @@ const VendorMessages: React.FC = () => {
     };
 
     fetchUsers();
+    fetchVendor();
   }, [messages]);
 
   const activeConversation = useMemo(() => {
     return conversationList.find(c => c.id === activeConversationId);
   }, [activeConversationId, conversationList]);
 
-
-  // send meassage 
-  const sendMessage = async () => {
-  if (!newMessage.trim() || !activeConversationId || !vendorId) return;
-
-  // First, fetch the vendor's `vendors.id` from the vendors table
-  const { data: vendorData, error: vendorError } = await supabase
+  const fetchVendor = async () => {
+    const { data, error } = await supabase
     .from('vendors')
-    .select('id')
+    .select('*')
     .eq('user_id', vendorId)
     .single();
+  console.log("data cle");
 
-  if (vendorError || !vendorData?.id) {
-    console.error('❌ Could not fetch vendor.id from vendors table', vendorError);
+  if (error || !data?.id) {
+    console.error('❌ Could not fetch vendor.id from vendors table', error);
     alert("Your vendor profile is missing or invalid.");
     return;
   }
+  console.log("vendor data",data); 
+  setCurrentVendor(data);// Type-safe!
+  };
 
-  const vendorTableId = vendorData.id;
+   useEffect(() => {
+      if (!activeConversationId || !vendorId || !currentVendor?.user_id) return;
+  
+      const vendorUserId = currentVendor.user_id;
+  
+      const filter = `or(
+        and(sender_id.eq.${activeConversationId},receiver_id.eq.${vendorUserId}),
+        and(sender_id.eq.${vendorUserId},receiver_id.eq.${activeConversationId})
+      )`;
+      const channelId = `messages_convo_${activeConversationId}_${vendorUserId}`;
+
+      console.log("chanid",channelId);
+      const channel = supabase
+        .channel(channelId)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+            filter,
+          },
+          (payload) => {
+            const newMsg = payload.new as Message;
+            setMessages((prev) => [...prev, newMsg]);
+          }
+        )
+        .subscribe();
+  
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }, [activeConversationId, vendorId, currentVendor?.user_id]);
+
+  // send meassage 
+  const sendMessage = async () => {
+    // console.log("is error ",!newMessage.trim()," id ", !activeConversationId ," er ",!vendorId);
+  if (!newMessage.trim() || !activeConversationId || !vendorId) return;
+
+  
+  // First, fetch the vendor's `vendors.id` from the vendors table
+ 
+
+  const vendorTableId = currentVendor!.id;
+  console.log("vid",currentVendor);
 
   // Optional: prevent reply before user has initiated
   const existingMessages = messages.filter(
@@ -183,7 +241,7 @@ const VendorMessages: React.FC = () => {
   const content = newMessage.trim();
 
   const { data, error } = await supabase.from('messages').insert([{
-    sender_id: vendorId,
+    sender_id: currentVendor!.user_id!,
     receiver_id: activeConversationId,
     vendor_id: vendorTableId,         // ✅ correct vendor_id from vendors table
     user_id: activeConversationId,
